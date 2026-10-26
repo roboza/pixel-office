@@ -1,0 +1,5 @@
+{
+  "name": "pixel-office",
+  "owner": { "name": "roboza" },
+  "plugins": [{ "name": "pixel-office", "source": "./" }]
+}

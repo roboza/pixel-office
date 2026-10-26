@@ -1,0 +1,7 @@
+{
+  "name": "pixel-office",
+  "version": "0.1.0",
+  "author": { "name": "Robert" },
+  "description": "A pixel-art office pane where every agent of the session gets a desk, a name plate and in/out trays",
+  "types": "./types/index.d.ts"
+}
