@@ -487,7 +487,7 @@ export function drawOffice(m: OfficeModel): { svg: string; width: number; height
   }
 
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W * SCALE}" height="${H * SCALE}" shape-rendering="crispEdges" style="background:#c98d5a">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W * SCALE}" height="${H * SCALE}" shape-rendering="crispEdges" style="display:block;width:100%;height:auto">` +
     `<style>${css}</style>${defs()}${backdrop(W, H, now)}${decor(W)}${floor}${walls}${walkers}${above}</svg>`
   return { svg, width: W, height: H }
 }

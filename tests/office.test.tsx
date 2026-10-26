@@ -8,7 +8,7 @@ const PANE = {
   props: {
     title: 'Office',
     isFocused: false,
-    bodyColumns: 60,
+    bodyColumns: 120,
     placement: 'dock',
     scroll: { offset: 0, bodyRows: 40 },
     view: {},

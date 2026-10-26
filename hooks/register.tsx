@@ -379,8 +379,10 @@ export const register: Register = on => {
       read($, selectedA),
     ])
     const now = await $.clock.now()
-    const width = e.props.bodyColumns ?? 60
-    const cols = Math.max(2, Math.min(6, Math.round(width / 22)))
+    // The pane's width in CSS pixels, from its cells of the code font (about
+    // 7.6px each); desks per row are picked so the art draws about 2.2x.
+    const paneWidth = Math.max(240, Math.round((e.props.bodyColumns ?? 60) * 7.6))
+    const cols = Math.max(2, Math.min(6, Math.floor((paneWidth / 2.2 - 32) / 72)))
     const { Box, Text, Button } = $.ui.resolve(e)
 
     const pick = (id: string) => () => update($, selectedA, s => (s === id ? '' : id))
@@ -449,6 +451,8 @@ export const register: Register = on => {
       <Box flexDirection="column" gap={1}>
         <Svg
           source={office.svg}
+          width={paneWidth}
+          height={Math.round((paneWidth * office.height) / office.width)}
           alt={`Pixel office: Claude the manager and ${busy} agent${busy === 1 ? '' : 's'} at their desks`}
           isInteractive
         />
