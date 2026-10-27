@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { ElementConstructor, EngineInterface, Register, TextProps } from 'claude-code'
 
-import type { OfficeAgent, OfficeAgentKind, OfficeMain, OfficePeer } from '../types'
-import { LEAVE_MS, drawOffice, toolLabel } from './office-svg'
+import type { OfficeAgent, OfficeAgentKind, OfficeMain, OfficePeer, OfficeScene } from '../types'
+import { LEAVE_MS, drawOffice, toolKind, toolLabel } from './office-svg'
 
 const PANE = 'pixel-office'
 const TITLE = 'Office'
@@ -17,6 +17,15 @@ const mainA = atom({ plugin: 'pixel-office', key: 'main' } as const, {
 })
 const peersA = atom({ plugin: 'pixel-office', key: 'peers' } as const, [])
 const selectedA = atom({ plugin: 'pixel-office', key: 'selected' } as const, '')
+const tooltipsA = atom({ plugin: 'pixel-office', key: 'hasTooltips' } as const, false)
+const TOOLTIPS_KEY = 'hasTooltips'
+const sceneA = atom({ plugin: 'pixel-office', key: 'scene' } as const, {
+  at: 0,
+  agents: [],
+  main: { waiting: false, toolCount: 0, filesIn: [], filesOut: [], since: 0 },
+  peers: [],
+  selected: '',
+})
 
 /** A persistent name, a plate role and a shirt colour per agent type. */
 const CAST: Record<string, [string, string, string]> = {
@@ -42,6 +51,53 @@ const running = new Map<string, string[]>() // owner -> tools in flight
 const asks = new Set<string>() // owners blocked on a permission prompt
 let lastActivity = 0
 let ticks = 0
+let shown = { at: 0, layout: '', look: '' }
+
+/**
+ * Someone came, started or stopped waiting, or finished; or a peer changed.
+ * A finished agent counts once, when it finishes: its leaving is played by
+ * the picture, so dropping it later is not a change to show at once.
+ */
+function layoutKey(s: Omit<OfficeScene, 'at'>, last: OfficeScene): string {
+  const finished = (id: string) => last.agents.some(b => b.id === id && b.status === 'done')
+  return JSON.stringify([
+    s.agents.filter(a => a.status !== 'done').map(a => [a.id, a.desk, a.status]),
+    s.agents.filter(a => a.status === 'done' && !finished(a.id)).map(a => [a.id, a.outcome]),
+    s.peers.map(p => [p.id, p.agents, p.isActive]),
+    s.main.waiting,
+  ])
+}
+
+/** What changes on every tool call: the bubbles and the paper stacks. */
+function lookKey(s: Omit<OfficeScene, 'at'>): string {
+  const trays = (o: { filesIn: string[]; filesOut: string[] }) => [Math.min(o.filesIn.length, 6), Math.min(o.filesOut.length, 6)]
+  return JSON.stringify([s.agents.map(a => [a.id, toolKind(a.tool), trays(a)]), toolKind(s.main.tool), !!s.main.tool, trays(s.main)])
+}
+
+/**
+ * Takes a new copy for the pane when the picture would change: at once for
+ * comings and goings, at most every few seconds for bubbles and papers, so
+ * the picture's own animations run on between reloads. A desk emptying needs
+ * no copy: the picture already plays the walk out and the vacant plate.
+ */
+async function refreshScene($: EngineInterface) {
+  const now = await $.clock.now()
+  const [agents, main, peers, selected] = await Promise.all([read($, agentsA), read($, mainA), read($, peersA), read($, selectedA)])
+  const next = { agents, main, peers, selected }
+  const last = await read($, sceneA)
+  const layout = layoutKey(next, last)
+  const look = lookKey(next)
+  const gap = now - shown.at
+  // The first copy, and a pick of the person's, show at once.
+  const isNow = last.at === 0 || last.selected !== selected
+  if (!isNow && layout === shown.layout && look === shown.look) return
+  if (!isNow && layout === shown.layout && gap < 4000) return
+  if (!isNow && gap < 500) return
+  const scene: OfficeScene = { at: now, ...next }
+  // Keyed against the copy just taken, so its own finishers do not count again.
+  shown = { at: now, layout: layoutKey(next, scene), look }
+  await update($, sceneA, () => scene)
+}
 
 function hash(text: string): number {
   let h = 2166136261
@@ -250,6 +306,7 @@ async function tick($: EngineInterface) {
   }
 
   if (ticks++ % 3 === 0) await heartbeat($, now)
+  await refreshScene($)
 }
 
 /** Other sessions of this mod meet in `$.store`: each writes its own key and reads the rest. */
@@ -296,7 +353,10 @@ export const register: Register = on => {
     })
     const now = await $.clock.now()
     await update($, mainA, m => (m.since ? m : { ...m, since: now }))
-    $.clock.every(1500, () => void tick($).catch(() => undefined))
+    const hasTooltips = (await $.store.get(TOOLTIPS_KEY)) === true
+    await update($, tooltipsA, () => hasTooltips)
+    $.clock.every(1000, () => void tick($).catch(() => undefined))
+    await refreshScene($)
     void $.ui.open({ id: PANE, title: TITLE })
 
     return next(e)
@@ -331,6 +391,7 @@ export const register: Register = on => {
           now,
         }),
       )
+      await refreshScene($)
     }
 
     return result
@@ -344,6 +405,7 @@ export const register: Register = on => {
       running.delete(id)
       asks.delete(id)
       await update($, agentsA, list => finish(list, id, e.reason === 'answer' ? 'ok' : 'failed', now))
+      await refreshScene($)
     } else {
       running.delete('main')
       asks.delete('main')
@@ -372,21 +434,25 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const [agents, main, peers, selected] = await Promise.all([
-      read($, agentsA),
-      read($, mainA),
-      read($, peersA),
-      read($, selectedA),
-    ])
-    const now = await $.clock.now()
+    // Drawn from the scene alone, so a redraw happens only when it changes.
+    const { at: now, agents, main, peers, selected } = await read($, sceneA)
     // The pane's width in CSS pixels, from its cells of the code font (about
     // 7.6px each); desks per row are picked so the art draws about 2.2x.
     const paneWidth = Math.max(240, Math.round((e.props.bodyColumns ?? 60) * 7.6))
     const cols = Math.max(2, Math.min(6, Math.floor((paneWidth / 2.2 - 32) / 72)))
     const { Box, Text, Button } = $.ui.resolve(e)
 
-    const pick = (id: string) => () => update($, selectedA, s => (s === id ? '' : id))
+    const pick = (id: string) => async () => {
+      await update($, selectedA, s => (s === id ? '' : id))
+      await refreshScene($)
+    }
     const glyph = (s: OfficeAgent['status']) => (s === 'waiting' ? '✋' : s === 'done' ? '✓' : '●')
+    const hasTooltips = await read($, tooltipsA)
+    const toggleTooltips = async () => {
+      const next = !(await read($, tooltipsA))
+      await update($, tooltipsA, () => next)
+      await $.store.set(TOOLTIPS_KEY, next)
+    }
     const roster = (
       <Box flexDirection="row" flexWrap="wrap" gap={1}>
         <Button key="pick:main" plain onPress={pick('main')}>
@@ -454,10 +520,15 @@ export const register: Register = on => {
           width={paneWidth}
           height={Math.round((paneWidth * office.height) / office.width)}
           alt={`Pixel office: Claude the manager and ${busy} agent${busy === 1 ? '' : 's'} at their desks`}
-          isInteractive
+          isInteractive={hasTooltips}
         />
         {roster}
         {details ?? <Text dimColor>Pick someone above to see their task, trays and progress.</Text>}
+        <Button key="tooltips" plain onPress={toggleTooltips}>
+          <Text dimColor>
+            Tooltips: {hasTooltips ? 'on (hover a tray for its files; the picture flashes when it updates)' : 'off (smoother; hover tooltips need them on)'}
+          </Text>
+        </Button>
       </Box>
     )
   })

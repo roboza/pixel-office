@@ -6,7 +6,7 @@ A Claude Code mod that shows the agents of your session as staff in a cozy 16-bi
 - Every **subagent, workflow agent and teammate** walks in through the front door to a free desk, with a name plate for its type: Ellie · Explorer, Pat · Planner, Gus · Generalist, and so on.
 - While it works it types, its monitor scrolls code, and a speech bubble shows the tool it is using (search, read, edit, shell, web, delegating, ...).
 - An agent waiting on a **permission prompt** raises its hand.
-- Each desk has **IN and OUT trays**: a paper per file read or written. Hover a tray to see the files.
+- Each desk has **IN and OUT trays**: a paper per file read or written. Click a name to see the files, or turn on **Tooltips** under the picture to see them by hovering a tray (the picture then flashes briefly when it updates).
 - When an agent finishes it gets a check mark, walks back out the door, and its desk is free again.
 - The office grows a new row of desks when it fills up.
 - **Other sessions** running this mod show up as colleagues at the bottom of the office.

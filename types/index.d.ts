@@ -47,6 +47,19 @@ export type OfficePeer = {
   isActive: boolean
 }
 
+/**
+ * What the pane draws: a copy of the other values taken when the picture
+ * changes enough to show, so the picture is not reloaded on every tool call.
+ */
+export type OfficeScene = {
+  /** When the copy was taken: the time every animation in the picture counts from. */
+  at: number
+  agents: OfficeAgent[]
+  main: OfficeMain
+  peers: OfficePeer[]
+  selected: string
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'pixel-office': {
@@ -55,6 +68,12 @@ declare module 'claude-code' {
       peers: OfficePeer[]
       /** The id of the desk whose details show; `main` for the manager, '' for none. */
       selected: string
+      scene: OfficeScene
+      /**
+       * Draws the picture in a frame that shows hover tooltips; off, as a plain
+       * image, which swaps without the frame's reload flash.
+       */
+      hasTooltips: boolean
     }
   }
 }

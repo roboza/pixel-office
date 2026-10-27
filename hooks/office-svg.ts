@@ -106,6 +106,9 @@ const STYLE = `
 @keyframes scr{to{transform:translateY(-8px)}}
 .blink{animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+.step{animation:tap .36s steps(1) infinite}
+.breathe{animation:tap 2.6s steps(1) infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .lA{animation:blink .36s steps(1) infinite}
 .lB{animation:blink .36s steps(1) infinite;animation-delay:-.18s}
 .drift{animation:drift 46s linear infinite}
@@ -189,12 +192,15 @@ function clock(x: number, now: number): string {
   const d = new Date(now)
   const cx = x + 5.5
   const cy = 13.5
-  const min = d.getMinutes() * 6
-  const hour = (d.getHours() % 12) * 30 + d.getMinutes() / 2
+  // The hands turn by CSS from the picture's time, so the clock runs between redraws.
+  const intoHour = d.getMinutes() * 60 + d.getSeconds()
+  const intoTwelve = (d.getHours() % 12) * 3600 + intoHour
+  const hand = (period: number, into: number) =>
+    `style="transform-origin:${cx}px ${cy}px;animation:spin ${period}s linear -${into}s infinite"`
   let s = r(x, 8, 11, 11, '#3b2a20') + r(x + 1, 9, 9, 9, '#fdf6e3')
   s += r(x + 5, 9, 1, 1, '#c96a4a') + r(x + 5, 17, 1, 1, '#c96a4a') + r(x + 1, 13, 1, 1, '#c96a4a') + r(x + 9, 13, 1, 1, '#c96a4a')
-  s += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - 4}" stroke="#3b2a20" stroke-width=".8" transform="rotate(${min} ${cx} ${cy})"/>`
-  s += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - 2.6}" stroke="#3b2a20" stroke-width="1.1" transform="rotate(${hour} ${cx} ${cy})"/>`
+  s += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - 4}" stroke="#3b2a20" stroke-width=".8" ${hand(3600, intoHour)}/>`
+  s += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - 2.6}" stroke="#3b2a20" stroke-width="1.1" ${hand(43200, intoTwelve)}/>`
   return s
 }
 
@@ -271,10 +277,11 @@ function person(x: number, y: number, who: Who, mood: Mood, phase: number): { bo
   const style = lookStyle(who.look, who.shirt)
   const sx = x + 30
   const sy = y + 3
-  let body = `<g transform="translate(${sx} ${sy})" style="${style}"><use href="#seat${hairStyle(who.look)}"/>`
+  const breath = `animation-delay:-${(phase % 2600) / 1000}s`
+  let body = `<g transform="translate(${sx} ${sy})" style="${style}"><g class="breathe" style="${breath}"><use href="#seat${hairStyle(who.look)}"/>`
   if (who.mark) body += r(5, 10, 2, 2, '#fffaf0')
   if (mood === 'wait') body += `<g class="wave"><use href="#armup" x="10" y="-4"/></g>`
-  body += '</g>'
+  body += '</g></g>'
   const delay = `animation-delay:-${(phase % 260) / 1000}s`
   let hands = `<g style="${style}">`
   if (mood === 'type') {
@@ -345,7 +352,7 @@ function keyframes(name: string, pts: Point[]): string {
 
 function walkerSprite(who: Who): string {
   return (
-    `<g style="${lookStyle(who.look, who.shirt)}"><use href="#walk${hairStyle(who.look)}"/>` +
+    `<g class="step" style="${lookStyle(who.look, who.shirt)}"><use href="#walk${hairStyle(who.look)}"/>` +
     `<g class="lA"><use href="#legA"/></g><g class="lB"><use href="#legB"/></g></g>`
   )
 }
@@ -461,8 +468,13 @@ export function drawOffice(m: OfficeModel): { svg: string; width: number; height
     floor += `<use href="#desk" x="${d.x}" y="${d.y}"/>`
     floor += screen(d.x, d.y, a.status === 'working' ? 'on' : 'idle', a.look)
     floor += wrapOpen + p.hands + wrapClose
+    // A leaver's papers and plate give way to a vacant plate as it reaches the door.
+    const gone = sinceEnd >= 0 ? LEAVE_MS - sinceEnd : -1
+    if (gone >= 0) floor += `<g style="animation:hide 1ms steps(1,end) ${gone}ms forwards">`
     floor += tray(d.x + 45, d.y + 21, 'IN: files read', a.filesIn) + tray(d.x + 56, d.y + 21, 'OUT: files written', a.filesOut)
-    floor += plate(d.x, d.y, a.name, a.role, false) + '</g>'
+    floor += plate(d.x, d.y, a.name, a.role, false)
+    if (gone >= 0) floor += `</g><g style="animation:show 1ms steps(1,end) ${gone}ms both">${plate(d.x, d.y, 'Vacant', 'desk', true)}</g>`
+    floor += '</g>'
     above += wrapOpen + bubble(d.x, d.y, kind) + wrapClose
     if (m.selected === a.id) above += selection(d)
   }

@@ -43,6 +43,8 @@ test('an agent is hired, works, finishes and walks out', async ($, on) => {
   await $.tool.call({ tool: 'Read', file_path: '/work/src/auth/login.ts', agentId: 'agent-1' })
   await $.tool.call({ tool: 'Edit', file_path: '/work/src/auth/session.ts', old_string: 'a', new_string: 'b', agentId: 'agent-1' })
   await $.tool.call({ tool: 'Bash', command: 'ls' })
+  // The pane's copy is taken on the next tick, not on every call.
+  await clock.advance(1000)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const svg = await ui.find({ type: 'Svg' })
@@ -50,6 +52,11 @@ test('an agent is hired, works, finishes and walks out', async ($, on) => {
   expect(JSON.stringify(svg)).toContain('Ellie')
   expect(JSON.stringify(svg)).toContain('login.ts')
   expect(JSON.stringify(svg)).toContain('session.ts')
+
+  // A plain image by default; the toggle turns on the frame with tooltips.
+  expect(JSON.stringify(svg)).not.toContain('"isInteractive":true')
+  await ui.press({ key: 'tooltips' })
+  expect(JSON.stringify(await ui.find({ type: 'Svg' }))).toContain('"isInteractive":true')
 
   await ui.press({ key: 'pick:agent-1' })
   expect((await ui.find({ type: 'Text', text: /Find auth/ }))?.text).toContain('Task: Find auth')
@@ -59,13 +66,14 @@ test('an agent is hired, works, finishes and walks out', async ($, on) => {
   listed[0] = { ...listed[0]!, status: 'completed' }
   await clock.advance(1500)
   expect((await ui.find({ type: 'Button', text: /Ellie/ }))?.text).toContain('✓')
-  await clock.advance(6000)
+  // Its leaving plays in the picture; the roster catches up on the next slow copy.
+  await clock.advance(10000)
   expect(await ui.find({ type: 'Button', text: /Ellie/ })).toBeUndefined()
   await ui.unmount()
 })
 
 test('the terminal gets a roster instead of the picture', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   mock.store(on)
   on('command.register', () => ({ value: { command: 'office' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -74,6 +82,7 @@ test('the terminal gets a roster instead of the picture', async ($, on) => {
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.agent.spawn({ ...SPAWN, prompt: 'Plan it', description: 'Plan', subagentType: 'Plan' })
+  await clock.advance(1000)
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Button', text: /Pat/ }))?.text).toContain('Planner')
